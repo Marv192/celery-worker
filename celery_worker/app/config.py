@@ -1,0 +1,5 @@
+API_KEY = "40dba80611211b4cd4dae78571288e53"
+ORDERS_SERVICE_URL = "http://mock-orders:8080/orders"
+
+CACHE_TTL = 60 * 60
+DB_CURRENCY = "USD"
