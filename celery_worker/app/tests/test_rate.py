@@ -4,11 +4,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import httpx
 import pytest
 
-from app.config import ORDERS_SERVICE_URL
+from app.config import settings
 from app.utils.currency_rate import get_rate, get_currency_rate
 from app.utils.prices import update_order_prices
 
-DB_CURRENCY = "USD"
 API_KEY = "test_api_key"
 
 
@@ -22,7 +21,7 @@ def mock_response():
 @pytest.fixture
 def order_data():
     return {
-        "id": 123,
+        "order_id": "f6b35aa5-22ad-4681-88e8-036fe9d3209e",
         "cart_price": Decimal("100.50"),
         "delivery_price": Decimal("20.00"),
         "total_price": Decimal("120.50")
@@ -30,44 +29,40 @@ def order_data():
 
 
 class TestPrices:
-    @pytest.mark.asyncio
-    async def test_get_rate_success(self, mock_response):
-        mock_response.json.return_value = {"success": True, "rates": {DB_CURRENCY: 1.23396}}
-        mock_get = AsyncMock(return_value=mock_response)
+    def test_get_rate_success(self, mock_response):
+        mock_response.json.return_value = {"success": True, "rates": {settings.db_currency: 1.23396}}
 
-        with patch('httpx.AsyncClient.get', new=mock_get):
-            result = await get_rate(currency=DB_CURRENCY, api_key=API_KEY)
+        with patch('httpx.Client') as mock_client:
+            mock_client.return_value.__enter__.return_value.get.return_value = mock_response
+            result = get_rate(currency=settings.db_currency, api_key=API_KEY)
 
         assert result == Decimal("1.23396")
 
-    @pytest.mark.asyncio
-    async def test_get_rate_failure(self):
-        mock_get = AsyncMock(side_effect=httpx.TimeoutException("Connection timeout"))
-
-        with patch('httpx.AsyncClient.get', new=mock_get):
-            result = await get_rate(currency=DB_CURRENCY, api_key=API_KEY)
+    def test_get_rate_failure(self):
+        with patch('httpx.Client') as mock_client:
+            mock_client.return_value.__enter__.return_value.get.side_effect = httpx.TimeoutException(
+                "Connection timeout")
+            result = get_rate(currency=settings.db_currency, api_key=API_KEY)
 
         assert result is None
 
-    @pytest.mark.asyncio
-    async def test_get_currency_rate_cache_hit(self):
+    def test_get_currency_rate_cache_hit(self):
         cached_value = "1.23396"
 
-        with patch('app.utils.currency_rate.get_cached', new=AsyncMock(return_value=Decimal(cached_value))):
-            result = await get_currency_rate(currency=DB_CURRENCY)
+        with patch('app.utils.currency_rate.get_cached', new=MagicMock(return_value=Decimal(cached_value))):
+            result = get_currency_rate(currency=settings.db_currency)
 
         assert result == Decimal(cached_value)
 
 
 class TestUpdateOrder:
-    @pytest.mark.asyncio
-    async def test_update_order_prices_success(self, mock_response, order_data):
-        mock_patch = AsyncMock(return_value=mock_response)
+    def test_update_order_prices_success(self, mock_response, order_data):
+        with patch('httpx.Client') as mock_client:
+            mock_instance = mock_client.return_value.__enter__.return_value
+            mock_instance.patch.return_value = mock_response
+            result = update_order_prices(order_data)
 
-        with patch('httpx.AsyncClient.patch', new=mock_patch):
-            result = await update_order_prices(order_data)
-
-        expected_url = f"{ORDERS_SERVICE_URL}/{order_data['id']}"
+        expected_url = f"{settings.orders_service_url}/{order_data['order_id']}"
         expected_json = {
             "cart_price": str(order_data["cart_price"]),
             "delivery_price": str(order_data["delivery_price"]),
@@ -75,14 +70,13 @@ class TestUpdateOrder:
         }
 
         assert result is True
-        mock_patch.assert_called_once_with(expected_url, json=expected_json)
+        mock_instance.patch.assert_called_once_with(expected_url, json=expected_json)
 
-    @pytest.mark.asyncio
-    async def test_update_order_prices_failure(self, order_data):
-        mock_patch = AsyncMock(side_effect=httpx.TimeoutException("Connection timeout"))
-
-        with patch('httpx.AsyncClient.patch', new=mock_patch):
-            result = await update_order_prices(order_data)
+    def test_update_order_prices_failure(self, order_data):
+        with patch('httpx.Client') as mock_client:
+            mock_instance = mock_client.return_value.__enter__.return_value
+            mock_instance.patch.side_effect = httpx.TimeoutException("Connection timeout")
+            result = update_order_prices(order_data)
 
         assert result is False
-        mock_patch.assert_called_once()
+        mock_instance.patch.assert_called_once()

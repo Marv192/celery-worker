@@ -13,12 +13,26 @@ services:
       - ./celery_worker:/celery_worker
 
 
+  celery_beat:
+    build: ./celery_worker
+    container_name: celery_beat
+    command: 'celery -A app.celery_app beat --loglevel=info'
+    env_file:
+      - .env
+    networks:
+      - backend_network
+    depends_on:
+      - redis_celery_worker
+    volumes:
+      - ./celery_worker:/celery_worker
+
+
   kafka_consumer:
     build: ./celery_worker
     image: marketplace_celery_worker
     container_name: kafka_consumer
     restart: unless-stopped
-    command: python -m app.kafka.kafka_consumer
+    command: python -m app.main
     env_file:
       - .env
     depends_on:

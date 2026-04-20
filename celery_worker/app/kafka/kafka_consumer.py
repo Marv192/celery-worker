@@ -2,12 +2,13 @@ import json
 import logging
 
 from confluent_kafka import Consumer, KafkaError
+from pydantic import ValidationError
 
+from app.schemas.order_message import OrderMessageReceived
 from app.tasks import calculate_order_prices
 
 logger = logging.getLogger(__name__)
 from app.celery_app import app
-
 
 
 class KafkaOrderConsumer:
@@ -32,14 +33,27 @@ class KafkaOrderConsumer:
 
     def process_message(self, msg):
         try:
-            payload = json.loads(msg.value().decode('utf-8'))
+            raw_payload = json.loads(msg.value().decode('utf-8'))
+            order_data = OrderMessageReceived.model_validate(raw_payload)
+
         except json.decoder.JSONDecodeError as e:
-            logger.warning(f"Message decode error: {e}")
+            logger.error(f"Message decode error: {e}")
+            self.consumer.commit(message=msg)
+            return
+
+        except ValidationError as e:
+            logger.error(f"Message validation error: {e}")
+            self.consumer.commit(message=msg)
+            return
+
+        except Exception as e:
+            logger.error(f"Decoding or validation error: {e}")
             self.consumer.commit(message=msg)
             return
 
         try:
-            calculate_order_prices.delay(payload)
+            celery_payload = order_data.model_dump(mode='json')
+            calculate_order_prices.delay(celery_payload)
             self.consumer.commit(message=msg)
         except Exception as e:
             logger.error(f"Failed to send task to Celery: {e}")
@@ -61,8 +75,3 @@ class KafkaOrderConsumer:
 
         finally:
             self.consumer.close()
-
-
-if __name__ == '__main__':
-    consumer = KafkaOrderConsumer()
-    consumer.consume()

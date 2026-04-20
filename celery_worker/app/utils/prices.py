@@ -3,29 +3,30 @@ from decimal import Decimal
 
 import httpx
 
-from app.config import ORDERS_SERVICE_URL
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def calculate_prices(order: dict, rate: Decimal):
-    order['cart_price'] = Decimal(order['cart_price']) / rate
-    order['total_price'] = Decimal(order['total_price']) / rate
-    order['delivery_price'] = Decimal(order['delivery_price']) / rate
+    order['cart_price'] = (Decimal(order['cart_price']) / rate).quantize(Decimal('.00'))
+    order['delivery_price'] = (Decimal(order['delivery_price']) / rate).quantize(Decimal('.00'))
+    order['total_price'] = Decimal(order['cart_price'] + order['delivery_price'])
+
     return order
 
 
-async def update_order_prices(order: dict):
-    url = f"{ORDERS_SERVICE_URL}/{order['id']}"
+def update_order_prices(order: dict):
+    url = f"{settings.orders_service_url}/{order['order_id']}"
     update_data = {
         "cart_price": str(order['cart_price']),
         "delivery_price": str(order['delivery_price']),
         "total_price": str(order['total_price'])
     }
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    with httpx.Client(timeout=10) as client:
         try:
-            response = await client.patch(url, json=update_data)
+            response = client.patch(url, json=update_data)
             response.raise_for_status()
             return True
         except Exception as e:
