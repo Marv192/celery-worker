@@ -6,4 +6,5 @@ prometheus-fastapi-instrumentator==7.1.0
 pydantic==2.13.2
 pydantic_settings==2.13.1
 pytest==9.0.3
+python-json-logger==4.1.0
 redis==7.4.0

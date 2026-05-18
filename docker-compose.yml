@@ -194,12 +194,91 @@ services:
     networks:
       - backend_network
 
+  elasticsearch-celery:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.0
+    container_name: elasticsearch-celery
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic_data_celery:/usr/share/elasticsearch/data
+    networks:
+      - backend_network
+
+  logstash_celery:
+    image: docker.elastic.co/logstash/logstash:9.4.0
+    container_name: logstash_celery
+    restart: unless-stopped
+    environment:
+      - "LS_JAVA_OPTS=-Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true"
+    volumes:
+      - ./celery_worker/elk-stack/logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    ports:
+      - "9600:9600"
+      - "12201:12201/udp"
+    depends_on:
+      - elasticsearch-celery
+    networks:
+      - backend_network
+
+  kibana_celery:
+    image: docker.elastic.co/kibana/kibana:9.4.0
+    container_name: kibana_celery
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch-celery:9200
+    depends_on:
+      - elasticsearch-celery
+    networks:
+      - backend_network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -s -f http://localhost:5601/api/status" ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  kibana-init_celery:
+    image: curlimages/curl:8.20.0
+    container_name: kibana-init_celery
+    restart: no
+    depends_on:
+      kibana_celery:
+        condition: service_healthy
+    volumes:
+      - ./celery_worker/elk-stack/kibana/init.sh:/init.sh:ro
+      - ./celery_worker/elk-stack/kibana/celery_dashboard.ndjson:/usr/share/kibana/data/celery_dashboard.ndjson:ro
+    command: [ "/bin/sh", "/init.sh" ]
+    networks:
+      - backend_network
+
+  filebeat_celery:
+    image: docker.elastic.co/beats/filebeat:9.4.0
+    container_name: filebeat_celery
+    restart: unless-stopped
+    user: root
+    command: [ "filebeat", "-e", "--strict.perms=false" ]
+    volumes:
+      - ./celery_worker/elk-stack/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - logstash_celery
+    networks:
+      - backend_network
+
 
 volumes:
   redis_data_celery:
   kafka_data:
   prometheus_data:
   grafana_data:
+  elastic_data_celery:
 
 networks:
   backend_network:
