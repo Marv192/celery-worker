@@ -1,5 +1,6 @@
 from celery import Celery
 from celery.schedules import crontab
+from prometheus_client import start_http_server
 
 from app.config import settings
 
@@ -14,3 +15,5 @@ app.conf.update(timezone='UTC',
                     }
                 }
                 )
+
+start_http_server(8004, '0.0.0.0')
