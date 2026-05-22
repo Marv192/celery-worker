@@ -4,6 +4,11 @@ filebeat.inputs:
     paths:
       - '/var/lib/docker/containers/*/*-json.log'
 
+    prospector:
+      scanner:
+        fingerprint.length: 64
+        fingerprint.offset: 0
+
     processors:
       - add_docker_metadata: ~
       - drop_event:
@@ -17,7 +22,7 @@ filebeat.inputs:
 
     json.keys_under_root: true
     json.add_error_key: true
-    json.message_key: true
+    json.message_key: log
     json.overwrite_keys: true
 
     scan_frequency: 5s

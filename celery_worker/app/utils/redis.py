@@ -18,11 +18,12 @@ def set_cache(key: str, value: Decimal, ttl: int = settings.cache_ttl):
     try:
         redis_client.setex(f"rates:{key}", ttl, str(value))
         redis_ops.labels(operation=f"SET", status="ok").inc()
+        logging.info("Set cache OK", extra={"key": key})
         return True
 
     except Exception as e:
         redis_ops.labels(operation=f"SET", status="error").inc()
-        logger.error(f"{key} cache write error: {e}")
+        logger.exception("Set cache error", extra={"key": key, "error_type": type(e).__name__})
         return False
 
     finally:
@@ -42,7 +43,7 @@ def get_cached(key: str) -> Optional[Decimal]:
 
     except Exception as e:
         redis_ops.labels(operation=f"GET", status="error").inc()
-        logger.error(f"{key} cache read error: {e}")
+        logger.exception("Cache read error", extra={"key": key, "error_type": type(e).__name__})
         return None
 
     finally:
